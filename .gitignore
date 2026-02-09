@@ -1,0 +1,12 @@
+# Visual Studio files
+bin/
+obj/
+.vs/
+
+# Database files 
+*.mdf
+*.ldf
+
+# User settings
+*.user
+claude_desktop_config.json
