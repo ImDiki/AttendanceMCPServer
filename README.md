@@ -1,18 +1,43 @@
-Student Attendance MCP Server
-A professional Model Context Protocol (MCP) server built with C# and .NET 8 that enables Claude Desktop to interact with a local SQL Student Attendance database using natural language.
+# Student Attendance MCP Server
 
-🚀 Features
-Natural Language Querying: Ask Claude about student details (e.g., "Who is student C1357?") instead of writing SQL queries.
+A small **C# / .NET 8 integration project** that connects an AI client to the same local SQL Server attendance database used by the Student Attendance application.
 
-SQL Integration: Seamless connection to SQL LocalDB for robust data management.
+The project was created as an experiment in exposing a focused student lookup tool through an MCP-style JSON-RPC interface.
 
-MCP Standards: Fully compliant with the Model Context Protocol for high performance and scalability.
+## Current Implementation
 
-🛠️ Tech Stack
-Language: C#
+The console application reads JSON-RPC messages from standard input and handles:
 
-Framework: .NET 8.0
+- initialization
+- tool discovery
+- tool calls
+- a `get_student_info` lookup by student code
 
-Database: Microsoft SQL Server (LocalDB)
+The lookup uses a parameterized SQL query against the local `Students` table and returns the matching student's basic information.
 
-Protocol: Model Context Protocol (MCP)
+## Relationship to Student Attendance App
+
+This repository is a companion experiment to the larger Student Attendance project. It reuses the attendance database concept so an AI client can request student information without writing SQL manually.
+
+## Tech Stack
+
+- C#
+- .NET 8
+- Microsoft.Data.SqlClient
+- SQL Server LocalDB
+- System.Text.Json
+- JSON-RPC / MCP-style tool interface
+
+## Project Status
+
+This is a **learning/prototype integration**, not a production server and not a claim of complete MCP protocol coverage.
+
+The implementation is intentionally small and currently concentrated in `Program.cs`.
+
+## Possible Improvements
+
+- Separate database access from protocol handling.
+- Replace `AddWithValue` with explicitly typed SQL parameters.
+- Add validation and structured error handling.
+- Add automated tests.
+- Verify interoperability against the intended MCP client and protocol version.
