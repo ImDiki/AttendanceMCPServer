@@ -1,19 +1,23 @@
-﻿using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlClient;
+using System.Data;
 using System.Text.Json;
 
 namespace AttendanceMCPServer
 {
     class Program
     {
-        // 
-        static string connectionString = @"Data Source=(LocalDB)\MSSQLLocalDB;AttachDbFilename=|DataDirectory|\mainlineDB.mdf;Integrated Security=True";
+        private static readonly string ConnectionString =
+            @"Data Source=(LocalDB)\MSSQLLocalDB;AttachDbFilename=|DataDirectory|\mainlineDB.mdf;Integrated Security=True";
 
         static void Main(string[] args)
         {
             while (true)
             {
-                string input = Console.ReadLine();
-                if (string.IsNullOrEmpty(input)) break;
+                string? input = Console.ReadLine();
+                if (string.IsNullOrWhiteSpace(input))
+                {
+                    break;
+                }
 
                 try
                 {
@@ -21,11 +25,11 @@ namespace AttendanceMCPServer
                     var root = doc.RootElement;
                     var method = root.GetProperty("method").GetString();
 
-      
                     long id = 0;
-                    if (root.TryGetProperty("id", out var idElem))
+                    if (root.TryGetProperty("id", out var idElement) &&
+                        idElement.ValueKind == JsonValueKind.Number)
                     {
-                        if (idElem.ValueKind == JsonValueKind.Number) id = idElem.GetInt64();
+                        id = idElement.GetInt64();
                     }
 
                     if (method == "initialize")
@@ -39,35 +43,42 @@ namespace AttendanceMCPServer
                     }
                     else if (method == "tools/list")
                     {
-                        var tools = new
+                        SendResponse(id, new
                         {
-                            tools = new[] {
-                                new {
+                            tools = new[]
+                            {
+                                new
+                                {
                                     name = "get_student_info",
                                     description = "Get student details by code from OIC Attendance Database",
-                                    inputSchema = new {
+                                    inputSchema = new
+                                    {
                                         type = "object",
                                         properties = new { studentCode = new { type = "string" } },
                                         required = new[] { "studentCode" }
                                     }
                                 }
                             }
-                        };
-                        SendResponse(id, tools);
+                        });
                     }
-                    else if (method == "tools/call") // Claude standard က tools/call ဖြစ်ပါတယ်
+                    else if (method == "tools/call")
                     {
-                        var toolName = root.GetProperty("params").GetProperty("name").GetString();
+                        var parameters = root.GetProperty("params");
+                        var toolName = parameters.GetProperty("name").GetString();
+
                         if (toolName == "get_student_info")
                         {
-                            var studentCode = root.GetProperty("params").GetProperty("arguments").GetProperty("studentCode").GetString();
-                            string result = FetchFromDB(studentCode);
+                            var studentCode = parameters
+                                .GetProperty("arguments")
+                                .GetProperty("studentCode")
+                                .GetString();
 
-                            // Claude က မျှော်လင့်တဲ့ tool result format ဖြစ်အောင် ပြင်လိုက်ပါတယ်
+                            string result = FetchFromDatabase(studentCode);
+
                             SendResponse(id, new
                             {
                                 content = new[] { new { type = "text", text = result } },
-                                isError = result.StartsWith("Database Error")
+                                isError = result.StartsWith("Database Error", StringComparison.Ordinal)
                             });
                         }
                     }
@@ -79,32 +90,40 @@ namespace AttendanceMCPServer
             }
         }
 
-        static string FetchFromDB(string code)
+        private static string FetchFromDatabase(string? studentCode)
         {
+            if (string.IsNullOrWhiteSpace(studentCode))
+            {
+                return "Student code is required.";
+            }
+
             try
             {
-                Console.Error.WriteLine($"[LOG] Searching database for: {code}");
-                using var conn = new SqlConnection(connectionString);
+                Console.Error.WriteLine($"[LOG] Searching database for: {studentCode}");
+                using var connection = new SqlConnection(ConnectionString);
+                connection.Open();
 
-                // Connection ကို အမြန်ဖွင့်ပါမယ်
-                conn.Open();
+                const string sql =
+                    "SELECT FullName, Class, YearLevel FROM Students WHERE StudentCode = @code";
 
-                string sql = "SELECT FullName, Class, YearLevel FROM Students WHERE StudentCode = @code";
-                using var cmd = new SqlCommand(sql, conn);
-                cmd.CommandTimeout = 2; // Query execution ကို ၂ စက္ကန့်ပဲ စောင့်မယ်
-                cmd.Parameters.AddWithValue("@code", code);
+                using var command = new SqlCommand(sql, connection)
+                {
+                    CommandTimeout = 2
+                };
+                command.Parameters.Add("@code", SqlDbType.NVarChar, 50).Value = studentCode;
 
-                using var reader = cmd.ExecuteReader();
+                using var reader = command.ExecuteReader();
                 if (reader.Read())
                 {
                     return $"[FOUND] Name: {reader["FullName"]}, Class: {reader["Class"]}, Year: {reader["YearLevel"]}";
                 }
+
                 return "Student not found in database.";
             }
             catch (SqlException ex)
             {
                 Console.Error.WriteLine($"[DB ERROR] {ex.Message}");
-                return $"Database Error: {ex.Message} (Check if Visual Studio has locked the DB file)";
+                return $"Database Error: {ex.Message}";
             }
             catch (Exception ex)
             {
@@ -113,7 +132,7 @@ namespace AttendanceMCPServer
             }
         }
 
-        static void SendResponse(long id, object result)
+        private static void SendResponse(long id, object result)
         {
             var response = new { jsonrpc = "2.0", id, result };
             Console.WriteLine(JsonSerializer.Serialize(response));
